@@ -1,21 +1,22 @@
+import Form from "next/form";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Marco, boton, campo, enlace } from "@/components/pc2-marco";
+import { MaterialesLista } from "@/components/pc2-materiales-lista";
 import { obtenerPerfil } from "@/features/acceso/perfil";
-import { esMaterial, materiales } from "@/features/ofertas/modelo";
+import { esMaterial, materiales, type MaterialOferta } from "@/features/ofertas/modelo";
+import { aceptarRecojo } from "@/features/ofertas/recojos-actions";
 import { createClient } from "@/lib/supabase/server";
 
 export const instant = false;
 
 const ruta = "/mi-cuenta/ofertas";
-const cantidadLocal = new Intl.NumberFormat("es-PE", { maximumFractionDigits: 2 });
-
-type Oferta = { id: string; distrito: string; material: string; cantidad: number; unidad: string };
+type Oferta = { id: string; distrito: string; materiales: MaterialOferta[] };
 
 export default async function Ofertas({
   searchParams,
 }: {
-  searchParams: Promise<{ distrito?: string; material?: string; pagina?: string }>;
+  searchParams: Promise<{ distrito?: string; material?: string; pagina?: string; estado?: string }>;
 }) {
   const perfil = await obtenerPerfil();
   if (perfil?.rol !== "recolector") redirect("/mi-cuenta?estado=acceso-denegado");
@@ -25,7 +26,7 @@ export default async function Ofertas({
   const numero = Number(filtros.pagina);
   const pagina = Number.isInteger(numero) && numero > 0 ? Math.min(numero, 100000) : 1;
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("pc2_buscar_ofertas", {
+  const { data, error } = await supabase.rpc("pc2_buscar_ofertas_materiales", {
     p_distrito: distrito || null,
     p_material: material || null,
     p_pagina: pagina,
@@ -39,8 +40,15 @@ export default async function Ofertas({
   }
 
   return (
-    <Marco titulo="Ofertas disponibles para recojo">
-      <form action={ruta} method="get" className="mb-6 flex flex-wrap items-end gap-4">
+    <Marco titulo="Ofertas disponibles" descripcion="Encuentra materiales por distrito y revisa qué incluye cada recojo.">
+      <div className="pc2-toolbar"><Link href="/mi-cuenta/mis-recojos" className="pc2-button pc2-button-secondary">Ver mis recojos</Link></div>
+      {filtros.estado === "no-disponible" && (
+        <p role="status" className="pc2-alert">Esta oferta ya no está disponible. Consulta el listado actualizado.</p>
+      )}
+      {(filtros.estado === "error" || filtros.estado === "datos") && (
+        <p role="alert" className="pc2-alert" data-kind="error">No se pudo aceptar el recojo. Selecciona una oferta disponible.</p>
+      )}
+      <Form action={ruta} className="pc2-panel pc2-filter">
         <label className="block min-w-44">Distrito
           <input name="distrito" defaultValue={distrito} maxLength={80} placeholder="Ej. Villa El Salvador" className={campo} />
         </label>
@@ -50,21 +58,30 @@ export default async function Ofertas({
             {materiales.map((item) => <option key={item}>{item}</option>)}
           </select>
         </label>
-        <button className={boton}>Buscar</button>
-        <Link href={ruta} className={`${enlace} py-2`}>Limpiar filtros</Link>
-      </form>
-      {ofertas.length === 0 && <p role="status">No se encontraron ofertas disponibles con esos filtros.</p>}
-      <ul className="grid gap-4 sm:grid-cols-2">
+        <div className="pc2-actions">
+          <button className={boton}>Buscar</button>
+          <Link href={ruta} className="pc2-button pc2-button-secondary">Limpiar filtros</Link>
+        </div>
+      </Form>
+      {ofertas.length === 0 && <p role="status" className="pc2-empty">No se encontraron ofertas disponibles con esos filtros.</p>}
+      <ul className="pc2-card-grid">
         {ofertas.map((oferta) => (
-          <li key={oferta.id} className="rounded-xl border border-slate-200 bg-white p-5">
-            <h2 className="text-lg font-semibold">{oferta.material}</h2>
-            <p>{oferta.distrito}</p>
-            <p>Cantidad aproximada: {cantidadLocal.format(oferta.cantidad)} {oferta.unidad}</p>
+          <li key={oferta.id} className="pc2-card">
+            <div className="pc2-card-head">
+              <h2 className="text-lg">{oferta.distrito}</h2>
+              <span className="pc2-status" data-estado="disponible">Disponible</span>
+            </div>
+            <MaterialesLista items={oferta.materiales} />
+            <p className="pc2-card-meta">La dirección se muestra al aceptar el recojo.</p>
+            <form action={aceptarRecojo} className="mt-3">
+              <input type="hidden" name="id" value={oferta.id} />
+              <button className={boton}>Aceptar recojo</button>
+            </form>
           </li>
         ))}
       </ul>
       {(pagina > 1 || resultados.length > 20) && (
-        <nav aria-label="Páginas de resultados" className="mt-6 flex gap-4">
+        <nav aria-label="Páginas de resultados" className="pc2-pagination">
           {pagina > 1 && <Link href={paginaUrl(pagina - 1)} className={enlace}>Anterior</Link>}
           <span>Página {pagina}</span>
           {resultados.length > 20 && pagina < 100000 && <Link href={paginaUrl(pagina + 1)} className={enlace}>Siguiente</Link>}
