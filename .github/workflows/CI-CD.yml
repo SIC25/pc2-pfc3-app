@@ -1,0 +1,242 @@
+
+name: CI/CD - Calidad, Seguridad y Despliegue
+
+on:
+  push:
+    branches:
+      - develop/fabrizio
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-cd-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+
+  # ========================================
+  # 1. PRUEBAS Y CALIDAD
+  # ========================================
+  quality:
+    name: Pruebas y calidad
+    runs-on: ubuntu-latest
+
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+
+    steps:
+      - name: Obtener código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Verificar ESLint
+        run: npm run lint
+
+      - name: Verificar TypeScript
+        run: npm run typecheck
+
+      - name: Ejecutar Vitest
+        run: npm run test
+
+      - name: Verificar compilación
+        run: npm run build
+
+  # ========================================
+  # 2. SEGURIDAD
+  # ========================================
+  security:
+    name: Seguridad
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Obtener historial Git
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detectar secretos con Gitleaks
+        run: |
+          docker run --rm \
+            -v "$PWD:/repo" \
+            ghcr.io/gitleaks/gitleaks:v8.30.1 \
+            git /repo --redact --exit-code 1
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Auditar dependencias npm
+        run: npm audit --audit-level=high
+
+      - name: Revisar nuevas dependencias
+        if: >
+          github.event_name == 'pull_request' &&
+          vars.ENABLE_DEPENDENCY_REVIEW == 'true'
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+
+      - name: Inicializar CodeQL
+        if: vars.ENABLE_CODEQL == 'true'
+        uses: github/codeql-action/init@v4
+        with:
+          languages: javascript-typescript
+
+      - name: Analizar código con CodeQL
+        if: vars.ENABLE_CODEQL == 'true'
+        uses: github/codeql-action/analyze@v4
+
+  # ========================================
+  # 3. DESPLIEGUE A PRODUCCIÓN
+  # ========================================
+  deploy:
+    name: Despliegue Vercel
+    needs: [quality, security]
+
+    if: >
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main'
+
+    runs-on: ubuntu-latest
+
+    environment: production
+
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+    outputs:
+      url: ${{ steps.deploy_app.outputs.url }}
+
+    steps:
+      - name: Obtener código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Instalar Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Obtener configuración de producción
+        run: |
+          vercel pull --yes \
+            --environment=production \
+            --token="$VERCEL_TOKEN"
+
+      - name: Construir aplicación
+        run: |
+          vercel build --prod \
+            --token="$VERCEL_TOKEN"
+
+      - name: Desplegar en Vercel
+        id: deploy_app
+        shell: bash
+        run: |
+          URL=$(vercel deploy --prebuilt --prod \
+            --token="$VERCEL_TOKEN")
+
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "Aplicación publicada: $URL"
+
+  # ========================================
+  # 4. SMOKE TEST
+  # ========================================
+  smoke:
+    name: Smoke Test
+    needs: deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Comprobar respuesta HTTP
+        shell: bash
+        env:
+          DEPLOY_URL: ${{ needs.deploy.outputs.url }}
+        run: |
+          if [ -z "$DEPLOY_URL" ]; then
+            echo "No se recibió la URL del deploy"
+            exit 1
+          fi
+
+          echo "Verificando: $DEPLOY_URL"
+
+          curl --fail \
+            --location \
+            --silent \
+            --show-error \
+            --retry 5 \
+            --retry-delay 3 \
+            --retry-all-errors \
+            --max-time 30 \
+            "$DEPLOY_URL" \
+            -o /dev/null
+
+          echo "Smoke Test aprobado"
+
+  # ========================================
+  # 5. RESULTADO FINAL
+  # ========================================
+  result:
+    name: Resultado del pipeline
+    needs: [quality, security, deploy, smoke]
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Verificar resultados
+        env:
+          QUALITY: ${{ needs.quality.result }}
+          SECURITY: ${{ needs.security.result }}
+          DEPLOY: ${{ needs.deploy.result }}
+          SMOKE: ${{ needs.smoke.result }}
+          REF: ${{ github.ref }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          echo "Calidad: $QUALITY"
+          echo "Seguridad: $SECURITY"
+          echo "Despliegue: $DEPLOY"
+          echo "Smoke Test: $SMOKE"
+
+          if [ "$QUALITY" != "success" ] ||
+             [ "$SECURITY" != "success" ]; then
+            echo "Fallaron las validaciones"
+            exit 1
+          fi
+
+          if [ "$EVENT" = "push" ] &&
+             [ "$REF" = "refs/heads/main" ]; then
+            if [ "$DEPLOY" != "success" ] ||
+               [ "$SMOKE" != "success" ]; then
+              echo "Falló el despliegue o Smoke Test"
+              exit 1
+            fi
+          fi
+
+          echo "Pipeline finalizado correctamente"
