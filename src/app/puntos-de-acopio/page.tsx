@@ -1,6 +1,9 @@
+import Form from "next/form";
 import Link from "next/link";
 import { Marco, boton, campo, enlace } from "@/components/pc2-marco";
 import { listarPuntos, normalizarFiltro } from "@/features/acopio/directorio";
+
+export const instant = false;
 
 export default async function Directorio({
   searchParams,
@@ -11,8 +14,8 @@ export default async function Directorio({
   const { puntos, distritos, materiales } = await listarPuntos(distrito, material);
 
   return (
-    <Marco titulo="Puntos de acopio">
-      <form action="/puntos-de-acopio" method="get" className="mb-8 flex flex-wrap items-end gap-4">
+    <Marco titulo="Puntos de acopio" descripcion="Busca por distrito y material para saber dónde entregar tus reciclables.">
+      <Form action="/puntos-de-acopio" className="pc2-panel pc2-filter">
         <label className="block min-w-44">Distrito
           <select name="distrito" defaultValue={distrito} className={campo}>
             <option value="">Todos los distritos</option>
@@ -27,19 +30,24 @@ export default async function Directorio({
             {materiales.map((valor) => <option key={valor}>{valor}</option>)}
           </select>
         </label>
-        <button className={boton}>Buscar</button>
-        <Link href="/puntos-de-acopio" className={`${enlace} py-2`}>Limpiar filtros</Link>
-      </form>
-      {puntos.length === 0 && <p role="status">No se encontraron puntos de acopio con esos filtros.</p>}
-      <ul className="grid gap-4 sm:grid-cols-2">
+        <div className="pc2-actions">
+          <button className={boton}>Buscar</button>
+          <Link href="/puntos-de-acopio" className="pc2-button pc2-button-secondary">Limpiar filtros</Link>
+        </div>
+      </Form>
+      {puntos.length === 0 && <p role="status" className="pc2-empty">No se encontraron puntos de acopio con esos filtros.</p>}
+      <ul className="pc2-card-grid">
         {puntos.map((punto) => (
-          <li key={punto.slug} className="rounded-xl border border-slate-200 bg-white p-5">
+          <li key={punto.slug} className="pc2-card">
+            <p className="pc2-card-meta">{punto.distrito}</p>
             <h2 className="mb-2 text-lg">
               <Link href={`/puntos-de-acopio/${punto.slug}`} className={enlace}>{punto.nombre}</Link>
             </h2>
             {punto.es_demostracion && <p className="text-sm text-slate-600">Datos de demostración</p>}
-            <p>{punto.distrito} · {punto.direccion}</p>
-            <p className="mt-2">{punto.materiales.join(", ")}</p>
+            <p>{punto.direccion}</p>
+            <ul className="pc2-tags" aria-label="Materiales aceptados">
+              {punto.materiales.map((item) => <li key={item}>{item}</li>)}
+            </ul>
           </li>
         ))}
       </ul>

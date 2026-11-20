@@ -11,11 +11,12 @@ export default async function Cuenta({ searchParams }: { searchParams: Promise<{
   if (perfil && !estado) redirect(`/mi-cuenta/${perfil.rol}`);
 
   return (
-    <Marco titulo="Mi cuenta">
-      {estado === "acceso-denegado" && <p role="alert">Tu perfil no tiene acceso a esa sección.</p>}
-      {estado === "error-salida" && <p role="alert">No se pudo cerrar la sesión. Inténtalo nuevamente.</p>}
-      {!perfil && <p>Tu cuenta aún no tiene un perfil de participante asociado.</p>}
-      <form action={salir} className="mt-5"><button className={boton}>Cerrar sesión</button></form>
+    <Marco titulo="Mi cuenta" variant="compacta">
+      {estado === "acceso-denegado" && <p role="alert" className="pc2-alert" data-kind="error">Tu perfil no tiene acceso a esa sección.</p>}
+      {estado === "error-salida" && <p role="alert" className="pc2-alert" data-kind="error">No se pudo cerrar la sesión. Inténtalo nuevamente.</p>}
+      {!perfil && <p className="pc2-empty">Tu cuenta aún no tiene un perfil de participante asociado.</p>}
+      <form action={salir} className="pc2-form-actions"><button className={boton}>Cerrar sesión</button></form>
     </Marco>
   );
 }
+

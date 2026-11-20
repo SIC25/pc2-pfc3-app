@@ -32,16 +32,17 @@ export default async function GestionAcopio({
   const mensaje = mensajes.get(estado ?? "");
 
   return (
-    <Marco titulo="Gestionar puntos de acopio">
-      {mensaje && <p role="status" className="mb-4">{mensaje}</p>}
-      {editar && !punto && <p role="alert" className="mb-4">El punto de acopio no está disponible para edición.</p>}
-      <section className="mb-8 max-w-xl rounded-xl border border-slate-200 bg-white p-5">
+    <Marco titulo="Gestionar puntos de acopio" descripcion="Registra puntos o actualiza su horario y disponibilidad.">
+      {mensaje && <p role="status" className="pc2-alert">{mensaje}</p>}
+      {editar && !punto && <p role="alert" className="pc2-alert" data-kind="error">El punto de acopio no está disponible para edición.</p>}
+      <section className="pc2-panel pc2-form mb-8">
         <h2 className="mb-4 text-xl font-semibold">{punto ? "Editar punto" : "Registrar punto"}</h2>
         <form action={guardarPunto} className="space-y-3">
           <input type="hidden" name="modo" value={punto ? "editar" : "crear"} />
           {punto ? <input type="hidden" name="slug" value={punto.slug} /> : (
-            <label className="block">Identificador (ej. punto-surco)
-              <input name="slug" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" maxLength={100} required className={campo} />
+            <label className="block">Identificador público
+              <input name="slug" pattern="[a-z0-9]+(?:-[a-z0-9]+)*" maxLength={100} required className={campo} placeholder="punto-surco" aria-describedby="slug-ayuda" />
+              <small id="slug-ayuda" className="pc2-form-note">Usa minúsculas, números y guiones. Ejemplo: punto-surco.</small>
             </label>
           )}
           <label className="block">Nombre <input name="nombre" defaultValue={punto?.nombre} minLength={2} maxLength={120} required className={campo} /></label>
@@ -51,7 +52,7 @@ export default async function GestionAcopio({
           <label className="block">Materiales, separados por comas
             <input name="materiales" defaultValue={punto?.materiales.join(", ")} maxLength={1200} required className={campo} />
           </label>
-          <div className="flex items-center gap-4">
+          <div className="pc2-form-actions">
             <button className={boton}>Guardar punto</button>
             {punto && <Link href={ruta} className={enlace}>Cancelar edición</Link>}
           </div>
@@ -59,10 +60,10 @@ export default async function GestionAcopio({
       </section>
       <section>
         <h2 className="mb-4 text-xl font-semibold">Puntos registrados</h2>
-        {puntos.length === 0 && <p>Todavía no hay puntos registrados.</p>}
-        <ul className="grid gap-3 sm:grid-cols-2">
+        {puntos.length === 0 && <p className="pc2-empty">Todavía no hay puntos registrados.</p>}
+        <ul className="pc2-card-grid">
           {puntos.map((item) => (
-            <li key={item.slug} className="rounded-lg border border-slate-200 bg-white p-4">
+            <li key={item.slug} className="pc2-card">
               <h3 className="font-semibold">{item.nombre}</h3>
               <p className="mb-3">{item.distrito} · {item.activo ? "Activo" : "Inactivo"}</p>
               <div className="flex flex-wrap items-center gap-4">
