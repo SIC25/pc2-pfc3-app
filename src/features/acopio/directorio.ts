@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { connection } from "next/server";
 
 export type Punto = {
   slug: string;
@@ -19,6 +20,7 @@ export function normalizarFiltro(value: string | string[] | undefined) {
 }
 
 export async function listarPuntos(distrito: string, material: string) {
+  await connection();
   const supabase = await createClient();
   let resultados = supabase.from("pc2_puntos_acopio").select(camposPunto)
     .eq("activo", true).order("nombre");
@@ -45,6 +47,7 @@ export async function listarPuntos(distrito: string, material: string) {
 
 export async function buscarPunto(slug: string) {
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) || slug.length > 100) return null;
+  await connection();
   const supabase = await createClient();
   const { data, error } = await supabase.from("pc2_puntos_acopio").select(camposPunto)
     .eq("slug", slug).eq("activo", true).maybeSingle();
